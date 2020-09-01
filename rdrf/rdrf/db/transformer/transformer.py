@@ -1,5 +1,7 @@
+from copy import deepcopy
 from enum import Enum
 
+from models.definition.models import ClinicalData
 from .move import move_cde, move_section
 from .convert import convert_cde
 from .edit import edit_cde
@@ -40,6 +42,15 @@ class CompositeKey:
 
 
 def transform(operation, *args):
+    """
+    Run a clinical database transformation operation
+
+    :param operation: A clinical database operation
+    :type operation: Operations
+    :param args: The operation's arguments
+    :type args: List[str]
+    """
+
     if operation == Operations.CDE_MOVE:
         move_cde(*args)
     elif operation == Operations.SECTION_MOVE:
@@ -50,3 +61,8 @@ def transform(operation, *args):
         edit_cde(*args)
     else:
         raise NotImplementedError("Operation not available")
+
+
+def clinical_data_generator(registry):
+    for entry in ClinicalData.objects.filter(registry_code=registry, collection__in=["cdes", "history"]):
+        yield entry, deepcopy(entry.data)
