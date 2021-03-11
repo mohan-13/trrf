@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.contrib import messages
 
 from registry.patients.admin_forms import ParentGuardianForm
+from registry.patients.forms import ParentAddPatientForm
 from registry.patients.models import AddressType, ParentGuardian, Patient, PatientAddress
 
 from rdrf.db.contexts_api import RDRFContextManager
@@ -57,6 +58,9 @@ class BaseParentView(View):
 class ParentView(BaseParentView):
 
     def get(self, request, registry_code):
+        return self.render_page(request, registry_code, ParentAddPatientForm())
+
+    def render_page(self, request, registry_code, add_patient_form):
         self.rdrf_context_manager = RDRFContextManager(self.registry)
         progress = form_progress.FormProgress(self.registry)
         fth = FormTitleHelper(self.registry, "")
@@ -78,9 +82,9 @@ class ParentView(BaseParentView):
                 } for cfg, group_title, forms in self._get_form_groups(patient)]
             } for patient in self._get_parent_patients(self.parent)],
             "registry_code": registry_code,
-            "form_titles": fth.all_titles_for_user(request.user)
+            "form_titles": fth.all_titles_for_user(request.user),
+            "add_patient_form": add_patient_form
         }
-
         return render(request, 'rdrf_cdes/parent.html', context)
 
     def _get_parent_patients(self, parent):
@@ -111,31 +115,34 @@ class ParentView(BaseParentView):
             yield None, "Modules", forms
 
     def post(self, request, registry_code):
+        form = ParentAddPatientForm(request.POST)
+        if not form.is_valid():
+            return self.render_page(request, registry_code, form)
 
         patient = Patient.objects.create(
             consent=True,
-            family_name=request.POST["surname"],
-            given_names=request.POST["first_name"],
-            date_of_birth=request.POST["date_of_birth"],
-            sex=request.POST["gender"],
+            family_name=form.cleaned_data["surname"],
+            given_names=form.cleaned_data["first_name"],
+            date_of_birth=form.cleaned_data["date_of_birth"],
+            sex=form.cleaned_data["gender"],
             created_by=request.user
         )
         patient.rdrf_registry.add(self.registry)
 
         patient.save()
 
-        use_parent_address = "use_parent_address" in request.POST
+        use_parent_address = "use_parent_address" in form.cleaned_data
 
         address_type, created = AddressType.objects.get_or_create(type=self._ADDRESS_TYPE)
 
         PatientAddress.objects.create(
             patient=patient,
             address_type=address_type,
-            address=self.parent.address if use_parent_address else request.POST["address"],
-            suburb=self.parent.suburb if use_parent_address else request.POST["suburb"],
-            state=self.parent.state if use_parent_address else request.POST["state"],
-            postcode=self.parent.postcode if use_parent_address else request.POST["postcode"],
-            country=self.parent.country if use_parent_address else request.POST["country"]
+            address=self.parent.address if use_parent_address else form.cleaned_data["address"],
+            suburb=self.parent.suburb if use_parent_address else form.cleaned_data["suburb"],
+            state=self.parent.state if use_parent_address else form.cleaned_data["state"],
+            postcode=self.parent.postcode if use_parent_address else form.cleaned_data["postcode"],
+            country=self.parent.country if use_parent_address else form.cleaned_data["country"]
         )
 
         self.parent.patient.add(patient)
